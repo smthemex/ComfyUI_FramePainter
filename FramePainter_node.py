@@ -73,11 +73,12 @@ class FramePainter_Loader:
             svd_repo,
             subfolder="unet",
             low_cpu_mem_usage=True,
+            variant="fp16"
         )
         sparse_control_encoder = SparseControlEncoder()
 
         vae = AutoencoderKLTemporalDecoder.from_pretrained(
-            svd_repo, subfolder="vae")
+            svd_repo, subfolder="vae",variant="fp16")
         noise_scheduler = EulerDiscreteScheduler.from_pretrained(
             svd_repo, subfolder="scheduler")
         pipeline = FramePainterPipeline.from_pretrained(
