@@ -5,6 +5,7 @@ import torch
 from PIL import Image
 import numpy as np
 import cv2
+import gc
 from comfy.utils import common_upscale,ProgressBar
 from huggingface_hub import hf_hub_download
 import time
@@ -33,6 +34,20 @@ def process_image_with_mask(image, mask,width, height):
 
     return input_image_resized,mask_pil
 
+def convert_cf2diffuser(model,unet_config_file):
+    from diffusers.pipelines.stable_diffusion.convert_from_ckpt import convert_ldm_unet_checkpoint
+    from diffusers import UNet2DConditionModel
+    from .modules.unet_spatio_temporal_condition_edit import UNetSpatioTemporalConditionEdit
+    cf_state_dict = model.diffusion_model.state_dict()
+    unet_state_dict = model.model_config.process_unet_state_dict_for_saving(cf_state_dict)
+    unet_config = UNetSpatioTemporalConditionEdit.load_config(unet_config_file)
+    Unet = UNetSpatioTemporalConditionEdit.from_config(unet_config).to(device, torch.float16)
+    #cf_state_dict = convert_ldm_unet_checkpoint(unet_state_dict, Unet.config)
+    Unet.load_state_dict(unet_state_dict, strict=False)
+    del cf_state_dict
+    gc.collect()
+    torch.cuda.empty_cache()
+    return Unet
 
 def cv2pil(cv_image):
     """
@@ -66,6 +81,13 @@ def tensor2pil_upscale(img_tensor, width, height):
     samples = img.movedim(1, -1)
     img_pil = tensor_to_pil(samples)
     return img_pil
+
+def tensor_upscale(img_tensor, width, height):
+    samples = img_tensor.movedim(-1, 1)
+    img = common_upscale(samples, width, height, "nearest-exact", "center")
+    samples = img.movedim(1, -1)
+    return samples
+
 
 
 def tensor2cv(tensor_image,RGB2BGR=True):
