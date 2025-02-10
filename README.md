@@ -1,6 +1,10 @@
 # ComfyUI_FramePainter
 Official pytorch implementation of "[FramePainter](https://github.com/YBYBZhang/FramePainter): Endowing Interactive Image Editing with Video Diffusion Priors",you can use it in comfyUI
 
+# Update
+* use single checkpoint now 改成SVD单体模型加载方式
+* now 8G VRAM can run 512*512  峰值显存7G多，按理8G也能跑512了  
+
 
 # 1. Installation
 
@@ -23,26 +27,16 @@ pip install -r requirements.txt
     |-- unet_diffusion_pytorch_model.safetensors
     |-- encoder_diffusion_pytorch_model.safetensors
 ```
-*  3.2 SVD repo [stabilityai/stable-video-diffusion-img2vid-xt
-](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt)  or [stabilityai/stable-video-diffusion-img2vid-xt-1-1](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt-1-1) online or offline   
-* if offline
+*  3.2 SVD checkpoints  [svd_xt.safetensors](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt)  or [svd_xt_1_1.safetensors](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt-1-1) online or offline   
+
 ```
---   anypath/stable-video-diffusion-img2vid-xt/  # or stable-video-diffusion-img2vid-xt-1-1 
-    ├── model_index.json
-    ├── vae...
-    ├── unet...
-    ├── feature_extractor...
-    ├── scheduler...
-```
-* 3.3 clip_vison
-```
---  ComfyUI/models/clip_vision/
-    ├── clip_vision_H.safetensors   # or 'stabilityai/stable-video-diffusion-img2vid-xt' image encoder safetensors or ipadapter image encoder
+--   ComfyUI/models/checkpoints
+    ├── svd_xt.safetensors  or  svd_xt_1_1.safetensors
 ```
 
 
 # 4.Example
-![](https://github.com/smthemex/ComfyUI_FramePainter/blob/main/example1.png)
+![](https://github.com/smthemex/ComfyUI_FramePainter/blob/main/example.png)
 
 # 5.Citation
 [FramePainter](https://github.com/YBYBZhang/FramePainter)
