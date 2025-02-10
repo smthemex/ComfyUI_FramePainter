@@ -108,30 +108,32 @@ class FramePainterPipeline(DiffusionPipeline):
     """
 
     #model_cpu_offload_seq = "image_encoder->unet->vae"
-    model_cpu_offload_seq = "unet->vae"
+    #model_cpu_offload_seq = "unet->vae"
+    model_cpu_offload_seq = "unet"
     _callback_tensor_inputs = ["latents"]
 
     def __init__(
         self,
-        vae: AutoencoderKLTemporalDecoder,
+        #vae: AutoencoderKLTemporalDecoder,
         #image_encoder: CLIPVisionModelWithProjection,
         unet: UNetSpatioTemporalConditionEdit,
         sparse_control_encoder: SparseControlEncoder,
         scheduler: EulerDiscreteScheduler,
         feature_extractor: CLIPImageProcessor,
+        vae_config=None,
     ):
         super().__init__()
     
         self.register_modules(
-            vae=vae,
+            #vae=vae,
             # image_encoder=image_encoder,
             sparse_control_encoder=sparse_control_encoder,
             unet=unet,
             scheduler=scheduler,
             feature_extractor=feature_extractor,
         )
-        
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_config = vae_config
+        self.vae_scale_factor = 2 ** (len(self.vae_config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     def _encode_image(self, image_embs, device, num_videos_per_prompt, do_classifier_free_guidance):
@@ -337,6 +339,7 @@ class FramePainterPipeline(DiffusionPipeline):
         batch_size=1,
         guidance_scale_decay="inv_square",
         image_embs=None,
+        input_latents=None,
         
     ):
         r"""
@@ -439,20 +442,23 @@ class FramePainterPipeline(DiffusionPipeline):
         fps = fps - 1
 
         # 4. Encode input image using VAE
-        image = self.image_processor.preprocess(image, height=height, width=width)
-        noise = randn_tensor(image.shape, generator=generator, device=image.device, dtype=image.dtype)
-        image = image + noise_aug_strength * noise  # 
+        if input_latents is None:
+            image = self.image_processor.preprocess(image, height=height, width=width)
+            noise = randn_tensor(image.shape, generator=generator, device=image.device, dtype=image.dtype)
+            image = image + noise_aug_strength * noise  # 
 
-        needs_upcasting = (self.vae.dtype == torch.float16 or self.vae.dtype == torch.bfloat16)  and self.vae.config.force_upcast
-        if needs_upcasting:
-            self_vae_dtype = self.vae.dtype
-            self.vae.to(dtype=torch.float32)
+            needs_upcasting = (self.vae.dtype == torch.float16 or self.vae.dtype == torch.bfloat16)  and self.vae.config.force_upcast
+            if needs_upcasting:
+                self_vae_dtype = self.vae.dtype
+                self.vae.to(dtype=torch.float32)
 
-        image_latents = self._encode_vae_image(image, device, num_videos_per_prompt, do_classifier_free_guidance)
+            image_latents = self._encode_vae_image(image, device, num_videos_per_prompt, do_classifier_free_guidance)
+        else:
+            image_latents = input_latents
         image_latents = image_latents.to(image_embeddings.dtype)
-
+        #print(image_latents.shape,123)#torch.Size([2, 4, 64, 64]) 
         # cast back to fp16 if needed
-        if needs_upcasting:
+        if input_latents is None and needs_upcasting:
             self.vae.to(dtype=self_vae_dtype)
 
         # Repeat the image latents for each frame so we can concatenate them with the noise
@@ -477,6 +483,7 @@ class FramePainterPipeline(DiffusionPipeline):
 
         # 5. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
+
         latents = self.prepare_latents(
             batch_size * num_videos_per_prompt,
             num_frames,
@@ -493,9 +500,11 @@ class FramePainterPipeline(DiffusionPipeline):
         if not isinstance(edit_condition, torch.Tensor):
             edit_condition = self.image_processor.preprocess(edit_condition, height=height, width=width)
             edit_condition = (edit_condition + 1.0) / 2
-        edit_condition = edit_condition.unsqueeze(0)
+            edit_condition = edit_condition.unsqueeze(0)
+        #print(edit_condition.shape,234) #torch.Size([1, 2, 3, 512, 512]) 
         if do_classifier_free_guidance:
             edit_condition = torch.cat([edit_condition] * 2) 
+            #print(edit_condition.shape,2345) #torch.Size([2, 2, 3, 512, 512])
         edit_condition = edit_condition.to(device, latents.dtype)
 
         self._guidance_scale = guidance_scale
@@ -519,7 +528,8 @@ class FramePainterPipeline(DiffusionPipeline):
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+        
+                latent_model_input = torch.cat([latents] * 2)  if do_classifier_free_guidance else latents ##Size([2, 2, 4, 64, 64])  torch.Size([1, 2, 4, 64, 64])
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 edit_output = self.sparse_control_encoder(
@@ -533,6 +543,7 @@ class FramePainterPipeline(DiffusionPipeline):
                     edit_output['scale'][N // 2:] *= edit_cond_scale
 
                 # Concatenate image_latents over channels dimention
+                #print(latent_model_input.shape,123,image_latents.shape) #([2,2， 4, 64, 64]) 123 torch.Size([2, 2, 4, 64, 64])
                 latent_model_input = torch.cat([latent_model_input, image_latents], dim=2)
                 
                 # predict the noise residual
@@ -579,8 +590,8 @@ class FramePainterPipeline(DiffusionPipeline):
             frames = self.decode_latents(latents, num_frames, decode_chunk_size)
             frames = tensor2vid(frames, self.image_processor, output_type=output_type)
         else:
-            frames = latents
-
+            frames = latents  / 0.18215
+        #print(frames.shape) #([1, 2, 4, 64, 64])
         self.maybe_free_model_hooks()
 
         if not return_dict:
