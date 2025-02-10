@@ -27,7 +27,7 @@ pip install -r requirements.txt
     |-- unet_diffusion_pytorch_model.safetensors
     |-- encoder_diffusion_pytorch_model.safetensors
 ```
-*  3.2 SVD checkpoints  [svd_xt.safetensors](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt)  or [svd_xt_1_1.safetensors](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt-1-1) online or offline   
+*  3.2 SVD checkpoints  [svd_xt.safetensors](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt)  or [svd_xt_1_1.safetensors](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt-1-1)    
 
 ```
 --   ComfyUI/models/checkpoints
